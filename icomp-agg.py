@@ -15,6 +15,10 @@ import xlrd
 
 def main():
     import argparse
+
+    report = None
+    dbic = None
+    
     parse = argparse.ArgumentParser()
     parse.add_argument('-f','--file',help='file = IC Report file and path')
     parse.add_argument('-l','--list',help='list = List of IC Report files')
@@ -33,7 +37,9 @@ def main():
 
     if program_args.create is not None:
         dbpath = program_args.create
-
+        logging.info("Opening " + dbpath)
+        dbic = DB.create(dbpath)
+        
     if program_args.list is not None:
         xllist = program_args.list
     elif program_args.file is not None:
@@ -42,8 +48,9 @@ def main():
 
     if xllist is not None:
         for xlpath in xllist:
-            Report.parse_report(xlpath)
-
+            report = Report.parse_report(xlpath)
+            
+    
 
 class Report:
     def __init__(self,reportfile,rdt,rilist):
@@ -77,6 +84,7 @@ class Report:
 
         report_object = Report(loadpath,report_date_object,report_list)            
         logging.info("Loaded Report from Excel file at " + loadpath + "  Dated " + report_date_string)
+        return report_object
 
     def get_db_report(self,db):
         logging.info("Loading Report from SQL DB at " + dbpath)
@@ -102,25 +110,32 @@ class Claim:
         self.status = ri.status        
     
 class DB:
+    def __init__(self,dbpath):
+        if not os.path.isfile(dbpath):
+            self.create(self,dbpath)
+        else:
+            self.open(dbpath)
+    
     def create(dbpath):
+        if os.path.isfile(dbpath):
+            raise FileExistsError(dbpath + " already exists")
         logging.info("Creating " + dbpath)
-        try:
-            connection = sqlite3.connect(db_name)
-        except Error as e:
-            logging.error(e)
-        self.connection = connection
-        self.cursor = connection.cursor()
-        self.db_name = dbpath
+        dbfile = open(dbpath,'w')
+        dbfile.close()
+        icdb = DB(dbpath)
+        # Initialization of tables goes here
+        return icdb
         
-    def open(dbpath):
-        logging.info("Creating " + dbpath)
+    def open(self,dbpath):
+        logging.info("Opening DB " + dbpath)
         try:
-            connection = sqlite3.connect(db_name)
+            connection = sqlite3.connect(dbpath)
         except Error as e:
             logging.error(e)
         self.connection = connection
         self.cursor = connection.cursor()
         self.db_name = dbpath
+        return self
         
     def export(xlpath):
         logging.info("Writing DB to " + xlpath)
