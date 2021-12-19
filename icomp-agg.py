@@ -123,7 +123,17 @@ class DB:
         dbfile = open(dbpath,'w')
         dbfile.close()
         icdb = DB(dbpath)
-        # Initialization of tables goes here
+        # Create report table
+        sql = "CREATE TABLE report ( rdate DATE, count INT, PRIMARY KEY (rdate));"
+        logging.debug(sql)
+        icdb.cursor.execute(sql)
+        # Create claim table
+        sql = "CREATE TABLE claim ( cdate DATE, frdate DATE, lrdate DATE, intervenor VARCHAR(30), amount INT, " \
+            "status VARCHAR(10), closed DATE, duration INT, PRIMARY KEY (cdate, intervenor), " \
+            "FOREIGN KEY (frdate) REFERENCES rdate (lrdate), FOREIGN KEY (lrdate) REFERENCES rdate (lrdate));"
+        logging.debug(sql)
+        icdb.cursor.execute(sql)
+        icdb.connection.commit()
         return icdb
         
     def open(self,dbpath):
