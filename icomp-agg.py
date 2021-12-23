@@ -18,14 +18,14 @@ def main():
 
     report = None
     dbic = None
+    dbpath = None
     
     parse = argparse.ArgumentParser()
     parse.add_argument('-f','--file',help='file = IC Report file and path')
     parse.add_argument('-l','--list',help='list = List of IC Report files')
     parse.add_argument('-p','--print',help='print = Print database to STDOUT')
     parse.add_argument('-x','--excel',help='excel = Output DB to Excel spreadsheet')
-    parse.add_argument('-d','--db',default='icompdb.sql',help='db = Open DB, default=icompdb.sql')
-    parse.add_argument('-c','--create',default='icompdb.sql',help='create = Create DB, default=icompdb.sql')
+    parse.add_argument('-d','--db',const='icompdb.sql', nargs='?', help='db = Open DB, default=icompdb.sql')
     parse.add_argument('-v','--verbose',help='verbose = Verbose',action='store_true')
     
     program_args = parse.parse_args()
@@ -35,10 +35,10 @@ def main():
     else:
         logging.basicConfig(level=logging.INFO)
 
-    if program_args.create is not None:
-        dbpath = program_args.create
-        logging.info("Opening " + dbpath)
-        dbic = DB.create(dbpath)
+    dbpath = program_args.db
+    logging.info("Opening " + dbpath)
+    dbic = DB(dbpath)
+    
         
     if program_args.list is not None:
         xllist = program_args.list
@@ -48,15 +48,15 @@ def main():
 
     if xllist is not None:
         for xlpath in xllist:
-            report = Report.parse_report(xlpath)
-            
-    
+            report = Report(xlpath)
+            dbic.add_report(report.date,report.count,xlpath)
 
 class Report:
-    def __init__(self,reportfile,rdt,rilist):
+    def __init__(self,reportfile):
         self.filename = reportfile
+        self.parse_report(reportfile)
 
-    def parse_report(loadpath):
+    def parse_report(self,loadpath):
         logging.debug ("Loading Report from Excel file at " + loadpath)
         wbk = load_workbook(filename=loadpath)
         sheet0 = wbk._sheets[0]
@@ -66,6 +66,8 @@ class Report:
         report_date_object = datetime.strptime(report_date_string,'%B %d %Y')
         report_rows = sheet0.rows
         lrows = sys.getsizeof(report_rows)
+        self.date = report_date_object
+        self.count = lrows - 2
         irow = 1
         report_list = []
         for rr in report_rows:
@@ -82,9 +84,8 @@ class Report:
                 report_list.append(report_row)
             irow +=1
 
-        report_object = Report(loadpath,report_date_object,report_list)            
+        self.report_list = report_list
         logging.info("Loaded Report from Excel file at " + loadpath + "  Dated " + report_date_string)
-        return report_object
 
     def get_db_report(self,db):
         logging.info("Loading Report from SQL DB at " + dbpath)
@@ -112,29 +113,28 @@ class Claim:
 class DB:
     def __init__(self,dbpath):
         if not os.path.isfile(dbpath):
-            self.create(self,dbpath)
+            self.create(dbpath)
         else:
             self.open(dbpath)
     
-    def create(dbpath):
+    def create(self,dbpath):
         if os.path.isfile(dbpath):
             raise FileExistsError(dbpath + " already exists")
         logging.info("Creating " + dbpath)
         dbfile = open(dbpath,'w')
         dbfile.close()
-        icdb = DB(dbpath)
+        self.open(dbpath)
         # Create report table
-        sql = "CREATE TABLE report ( rdate DATE, count INT, PRIMARY KEY (rdate));"
+        sql = "CREATE TABLE report ( rdate DATE, count INT, filename STRING, PRIMARY KEY (rdate));"
         logging.debug(sql)
-        icdb.cursor.execute(sql)
+        self.cursor.execute(sql)
         # Create claim table
         sql = "CREATE TABLE claim ( cdate DATE, frdate DATE, lrdate DATE, intervenor VARCHAR(30), amount INT, " \
             "status VARCHAR(10), closed DATE, duration INT, PRIMARY KEY (cdate, intervenor), " \
             "FOREIGN KEY (frdate) REFERENCES rdate (lrdate), FOREIGN KEY (lrdate) REFERENCES rdate (lrdate));"
         logging.debug(sql)
-        icdb.cursor.execute(sql)
-        icdb.connection.commit()
-        return icdb
+        self.cursor.execute(sql)
+        self.connection.commit()
         
     def open(self,dbpath):
         logging.info("Opening DB " + dbpath)
@@ -145,7 +145,32 @@ class DB:
         self.connection = connection
         self.cursor = connection.cursor()
         self.db_name = dbpath
-        return self
+
+    def get_report(self,rptdate):
+        sql = '''SELECT * FROM report WHERE rdate = ?'''
+        logging.debug(sql)
+        sqldate = rptdate.date().isoformat()
+        self.cursor.execute(sql,(sqldate,))
+        report = self.cursor.fetchone()
+        return report
+        
+    def add_report(self,rdate, count, filename):
+        sql = '''INSERT INTO report (rdate, count, filename) VALUES (?,?,?)'''
+        logging.debug(sql)
+        report_check = self.get_report(rdate)
+        if report_check == None:
+            sqldate = rdate.date().isoformat()
+            self.cursor.execute(sql,(sqldate,count,filename))
+            self.connection.commit()
+
+    def add_record(report_item):
+        sql = """INSERT INTO claim (cdate, frdate, lrdate, intervenor, amount, status, closed, duration) VALUES (?,?,?,?,?,?,?,?)"""
+        
+    
+#    def get_record(date,intervenor):
+    
+#    def exists_record(date,intervenor):
+        
         
     def export(xlpath):
         logging.info("Writing DB to " + xlpath)
