@@ -50,6 +50,8 @@ def main():
         for xlpath in xllist:
             report = Report(xlpath)
             dbic.add_report(report.date,report.count,xlpath)
+            for repitem in report.report_items:
+                dbic.add_claim(report.date,report.report_items[repitem])            
 
 class Report:
     def __init__(self,reportfile):
@@ -69,22 +71,23 @@ class Report:
         self.date = report_date_object
         self.count = lrows - 2
         irow = 1
-        report_list = []
+        report_items = {}
         for rr in report_rows:
             if irow > 3:
                 proc_no = rr[1].value
+                proc_no = re.sub('\n','',proc_no)
                 intervenor = rr[2].value
                 intervenor = re.sub('\n',' ',intervenor)
                 claim_date = rr[3].value
                 claim_amount = rr[4].value
                 status = rr[5].value
-                report_row = [proc_no, intervenor, claim_date, claim_amount, status]
-                logging.debug("   "+ report_row[0] + "  " + report_row[1] + "  " +
-                              str(report_row[2]) + "  " + str(report_row[3]) + "  " + report_row[4])
-                report_list.append(report_row)
+                claim_key = (intervenor,claim_date) 
+                report_items[(intervenor, claim_date)] =  {'intervenor' : intervenor, 'claim_date' : claim_date, 'proc_no' : proc_no, 'claim_amount' : claim_amount, 'status' : status}
+                logging.debug("   "+ intervenor + "  " + str(claim_date) + "  " + proc_no + "  " +
+                              str(claim_amount) + "  " + status)
             irow +=1
 
-        self.report_list = report_list
+        self.report_items = report_items
         logging.info("Loaded Report from Excel file at " + loadpath + "  Dated " + report_date_string)
 
     def get_db_report(self,db):
@@ -93,13 +96,6 @@ class Report:
     def put_db_report(self,db):
         logging.info("Adding Report to SQL DB at " + dbpath)
 
-
-class ReportItem:
-    def __init__(self,intv,dt,amt,sts):
-        self.intervenor = intv
-        self.date = dt
-        self.amount = amt
-        self.status = sts
 
 class Claim:
     def __init__(self,frdt,lrdt,ri):  #First report date, last report date, ReportItem
@@ -129,8 +125,8 @@ class DB:
         logging.debug(sql)
         self.cursor.execute(sql)
         # Create claim table
-        sql = "CREATE TABLE claim ( cdate DATE, frdate DATE, lrdate DATE, intervenor VARCHAR(30), amount INT, " \
-            "status VARCHAR(10), closed DATE, duration INT, PRIMARY KEY (cdate, intervenor), " \
+        sql = "CREATE TABLE claim ( cmdate DATE, frdate DATE, lrdate DATE, intervenor VARCHAR(30), proceeding VARCHAR(30), " \
+            "amount INT, status VARCHAR(10), cldate DATE, duration INT, PRIMARY KEY (cmdate, intervenor), " \
             "FOREIGN KEY (frdate) REFERENCES rdate (lrdate), FOREIGN KEY (lrdate) REFERENCES rdate (lrdate));"
         logging.debug(sql)
         self.cursor.execute(sql)
@@ -163,15 +159,24 @@ class DB:
             self.cursor.execute(sql,(sqldate,count,filename))
             self.connection.commit()
 
-    def add_record(report_item):
-        sql = """INSERT INTO claim (cdate, frdate, lrdate, intervenor, amount, status, closed, duration) VALUES (?,?,?,?,?,?,?,?)"""
-        
+    def get_claim(self,cdt,ivn):
+        sql = '''SELECT * FROM claim WHERE cmdate = ? AND intervenor = ?'''
+        logging.debug(sql)
+        sqldate = cdt.date().isoformat()
+        self.cursor.execute(sql,(sqldate,ivn))
+        claim = self.cursor.fetchone()
+        return claim
+
+    def add_claim(self,rdate,ritem):
+        sql = '''INSERT INTO claim (cmdate, frdate, lrdate, intervenor, amount, proceeding, status, cldate, duration) VALUES (?,?,?,?,?,?,?,?,?)'''
+        logging.debug(sql)
+        claim_check = self.get_claim(ritem['claim_date'],ritem['intervenor'])
+        if claim_check == None:
+            sqlrdt = rdate.date().isoformat()
+            sqlcdt = ritem['claim_date'].date().isoformat()
+            self.cursor.execute(sql,(sqlcdt,sqlrdt,sqlrdt,ritem['intervenor'],ritem['claim_amount'],ritem['proc_no'],ritem['status'],None,None))
+            self.connection.commit()
     
-#    def get_record(date,intervenor):
-    
-#    def exists_record(date,intervenor):
-        
-        
     def export(xlpath):
         logging.info("Writing DB to " + xlpath)
 
