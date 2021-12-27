@@ -51,7 +51,8 @@ def main():
             report = Report(xlpath)
             dbic.add_report(report.date,report.count,xlpath)
             for repitem in report.report_items:
-                dbic.add_claim(report.date,report.report_items[repitem])            
+                dbic.check_claim(report.date,report.report_items[repitem])
+                dbic.add_claim(report.date,report.report_items[repitem])
 
 class Report:
     def __init__(self,reportfile):
@@ -96,16 +97,6 @@ class Report:
     def put_db_report(self,db):
         logging.info("Adding Report to SQL DB at " + dbpath)
 
-
-class Claim:
-    def __init__(self,frdt,lrdt,ri):  #First report date, last report date, ReportItem
-        self.first_report = frdt
-        self.last_report = lrdt
-        self.intervenor = ri.intervenor
-        self.date = ri.date
-        self.amount = ri.amount
-        self.status = ri.status        
-    
 class DB:
     def __init__(self,dbpath):
         if not os.path.isfile(dbpath):
@@ -176,7 +167,33 @@ class DB:
             sqlcdt = ritem['claim_date'].date().isoformat()
             self.cursor.execute(sql,(sqlcdt,sqlrdt,sqlrdt,ritem['intervenor'],ritem['claim_amount'],ritem['proc_no'],ritem['status'],None,None))
             self.connection.commit()
-    
+
+    def check_claim(self,rdate,ritem):
+        (dbstat,cldate) = self.check_status(rdate,ritem['status'])
+        logging.debug("Status = " + dbstat)
+        if cldate != None:
+            logging.debug(" Decision date = " + str(cldate))
+        return (dbstat,cldate)
+
+    def check_status(self,rdate,clstat):
+        ryear = rdate.year
+        cldate = None
+        dbstat = None
+        agdt = re.search(r"On (\w+) (\d+) Agenda",clstat)
+        if re.search('Assigned',clstat):
+            dbstat = 'Assigned'
+        elif re.search('Pending',clstat):
+            dbstat = 'Pending'
+        elif agdt != None:
+            clmonth = agdt.group(1)
+            clday = int(agdt.group(2))
+            cldate = datetime.strptime(clmonth,"%B")
+            cldate = cldate.replace(year=ryear).replace(day=clday)
+            dbstat = 'Closed'
+        else:
+            raise ValueError(clstat + " - is not an expected value")
+        return (dbstat,cldate)
+            
     def export(xlpath):
         logging.info("Writing DB to " + xlpath)
 
