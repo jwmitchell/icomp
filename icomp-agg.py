@@ -51,7 +51,7 @@ def main():
             report = Report(xlpath)
             dbic.add_report(report.date,report.count,xlpath)
             for repitem in report.report_items:
-                dbic.check_claim(report.date,report.report_items[repitem])
+                dbic.update_claim(report.date,report.report_items[repitem])
                 dbic.add_claim(report.date,report.report_items[repitem])
 
 class Report:
@@ -156,6 +156,9 @@ class DB:
         sqldate = cdt.date().isoformat()
         self.cursor.execute(sql,(sqldate,ivn))
         claim = self.cursor.fetchone()
+        if claim != None:
+            claiminit = {'cmdate' : '','frdate' : '','lrdate' : '','intervenor' : '','amount' : '','proceeding' : '','status' : '','cldate' : '','duration' : ''}
+            claim = dict(zip(claiminit,claim))
         return claim
 
     def add_claim(self,rdate,ritem):
@@ -168,18 +171,30 @@ class DB:
             self.cursor.execute(sql,(sqlcdt,sqlrdt,sqlrdt,ritem['intervenor'],ritem['claim_amount'],ritem['proc_no'],ritem['status'],None,None))
             self.connection.commit()
 
-    def check_claim(self,rdate,ritem):
+    def update_claim(self,rdate,ritem):
+        rupdate = {}
         (dbstat,cldate) = self.check_status(rdate,ritem['status'])
         logging.debug("Status = " + dbstat)
-        if cldate != None:
-            logging.debug(" Decision date = " + str(cldate))
-        return (dbstat,cldate)
+        sqlrdt = rdate.date().isoformat()
+        claim = self.get_claim(ritem['claim_date'],ritem['intervenor'])
+        if claim != None:
+            if claim['frdate'] > sqlrdt:
+                rupdate['frdate'] = sqlrdt
+            if claim['lrdate'] < sqlrdt:
+                rupdate['lrdate'] = sqlrdt
+            if cldate != None:
+                logging.debug(" Decision date = " + str(cldate))
+                rupdate['cldate'] = cldate.date().isoformat()
+                rupdate['duration'] = (cldate - ritem['claim_date']).days
+                rupdate['status'] = dbstat
+        logging.debug("Update = "+ str(rupdate))
+        return
 
     def check_status(self,rdate,clstat):
         ryear = rdate.year
         cldate = None
         dbstat = None
-        agdt = re.search(r"On (\w+) (\d+) Agenda",clstat)
+        agdt = re.search(r"On (\w+) (\d+)\w* Agenda",clstat)
         if re.search('Assigned',clstat):
             dbstat = 'Assigned'
         elif re.search('Pending',clstat):
