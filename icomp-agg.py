@@ -25,7 +25,7 @@ def main():
     parse.add_argument('-l','--list',help='list = List of IC Report files')
     parse.add_argument('-p','--print',help='print = Print database to STDOUT')
     parse.add_argument('-x','--excel',help='excel = Output DB to Excel spreadsheet')
-    parse.add_argument('-d','--db',const='icompdb.sql', nargs='?', help='db = Open DB, default=icompdb.sql')
+    parse.add_argument('-d','--db',const='data/icomp.db', nargs='?', help='db = Open DB, default=data/icomp.db')
     parse.add_argument('-v','--verbose',help='verbose = Verbose',action='store_true')
     
     program_args = parse.parse_args()
@@ -165,14 +165,20 @@ class DB:
         sql = '''INSERT INTO claim (cmdate, frdate, lrdate, intervenor, amount, proceeding, status, cldate, duration) VALUES (?,?,?,?,?,?,?,?,?)'''
         logging.debug(sql)
         claim_check = self.get_claim(ritem['claim_date'],ritem['intervenor'])
+        (dbstat,cldate) = self.check_status(rdate,ritem['status'])
+        duration = None
+        if cldate != None:
+            duration = (cldate - ritem['claim_date']).days
+            cldate = cldate.date().isoformat()
         if claim_check == None:
             sqlrdt = rdate.date().isoformat()
             sqlcdt = ritem['claim_date'].date().isoformat()
-            self.cursor.execute(sql,(sqlcdt,sqlrdt,sqlrdt,ritem['intervenor'],ritem['claim_amount'],ritem['proc_no'],ritem['status'],None,None))
+            self.cursor.execute(sql,(sqlcdt,sqlrdt,sqlrdt,ritem['intervenor'],ritem['claim_amount'],ritem['proc_no'],dbstat,cldate,duration))
             self.connection.commit()
 
     def update_claim(self,rdate,ritem):
         rupdate = {}
+        lupdate = []
         (dbstat,cldate) = self.check_status(rdate,ritem['status'])
         logging.debug("Status = " + dbstat)
         sqlrdt = rdate.date().isoformat()
@@ -180,14 +186,28 @@ class DB:
         if claim != None:
             if claim['frdate'] > sqlrdt:
                 rupdate['frdate'] = sqlrdt
-            if claim['lrdate'] < sqlrdt:
+            elif claim['lrdate'] < sqlrdt:
                 rupdate['lrdate'] = sqlrdt
             if cldate != None:
                 logging.debug(" Decision date = " + str(cldate))
                 rupdate['cldate'] = cldate.date().isoformat()
                 rupdate['duration'] = (cldate - ritem['claim_date']).days
                 rupdate['status'] = dbstat
-        logging.debug("Update = "+ str(rupdate))
+            elif dbstat != claim['status']:
+                logging.debug(" Updating status to " + dbstat)
+                rupdate['status'] = dbstat
+        if len(rupdate) > 0:
+            sql = "UPDATE claim SET "
+            for upd in rupdate:
+                sql = sql + upd + " = ?,"
+                lupdate.append(rupdate[upd])
+            sql = sql.strip(',')
+            sql = sql + " WHERE intervenor = ? AND cmdate = ? AND status != 'Closed'"
+            lupdate.extend([ritem['intervenor'],ritem['claim_date'].date().isoformat()])
+            tpupdate = tuple(lupdate)
+            logging.debug(sql + str(tpupdate))
+            self.cursor.execute(sql,tpupdate)
+            self.connection.commit()
         return
 
     def check_status(self,rdate,clstat):
