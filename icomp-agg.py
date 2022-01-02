@@ -53,6 +53,7 @@ def main():
             for repitem in report.report_items:
                 dbic.update_claim(report.date,report.report_items[repitem])
                 dbic.add_claim(report.date,report.report_items[repitem])
+            dbic.close_missing_claims(report.date)
 
 class Report:
     def __init__(self,reportfile):
@@ -210,6 +211,25 @@ class DB:
             self.connection.commit()
         return
 
+    def close_missing_claims(self,rdate):
+        sqlrdt = rdate.date().isoformat()
+        sql = "SELECT * FROM claim WHERE status != 'Closed'"
+        logging.debug(sql)
+        self.cursor.execute(sql)
+        claimlist = self.cursor.fetchall()
+        for claim in claimlist:
+            logging.debug(str(claim))
+            cmdate = datetime.strptime(claim[0],"%Y-%m-%d")
+            lrdate = datetime.strptime(claim[2],"%Y-%m-%d")
+            intervenor = claim[3]
+            status = claim[6]
+            if rdate > lrdate:
+                duration = (rdate - cmdate).days
+                sql = "UPDATE claim SET status = 'Closed', cldate = ?, lrdate = ?, duration = ? WHERE intervenor = ? AND cmdate = ?"
+                logging.debug(sql + " :" + sqlrdt+"," + sqlrdt + "," + str(duration) + "," + intervenor + "," + str(cmdate))
+                self.cursor.execute(sql,(sqlrdt,sqlrdt,duration,intervenor,cmdate.date().isoformat()))
+            self.connection.commit()
+    
     def check_status(self,rdate,clstat):
         ryear = rdate.year
         cldate = None
