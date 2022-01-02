@@ -41,7 +41,11 @@ def main():
     
         
     if program_args.list is not None:
-        xllist = program_args.list
+        xllist = []
+        xlfile = open(program_args.list,"r")
+        xl0 = xlfile.readlines()
+        for xf in xl0:
+            xllist.append(xf.strip('\n'))
     elif program_args.file is not None:
         xllist = []
         xllist.append(program_args.file)
@@ -235,15 +239,26 @@ class DB:
         cldate = None
         dbstat = None
         agdt = re.search(r"On (\w+) (\d+)\w* Agenda",clstat)
+        agdt2 = re.search(r"On (\d+)/(\d+)\w* Agenda",clstat)
         if re.search('Assigned',clstat):
             dbstat = 'Assigned'
         elif re.search('Pending',clstat):
+            dbstat = 'Pending'
+        elif re.search('Unassigned',clstat):
+            dbstat = 'Pending'
+        elif re.search('Not',clstat):
             dbstat = 'Pending'
         elif agdt != None:
             clmonth = agdt.group(1)
             clday = int(agdt.group(2))
             cldate = datetime.strptime(clmonth,"%B")
             cldate = cldate.replace(year=ryear).replace(day=clday)
+            dbstat = 'Closed'
+        elif agdt2 != None:
+            clmonth = int(agdt2.group(1))
+            clday = int(agdt2.group(2))
+            cldate = datetime.now()
+            cldate = cldate.replace(year=ryear).replace(month=clmonth).replace(day=clday)
             dbstat = 'Closed'
         else:
             raise ValueError(clstat + " - is not an expected value")
