@@ -10,7 +10,7 @@ import re
 import sqlite3
 from datetime import datetime
 import logging
-from openpyxl import load_workbook
+from openpyxl import load_workbook,Workbook
 import xlrd
 
 def main():
@@ -19,6 +19,7 @@ def main():
     report = None
     dbic = None
     dbpath = None
+    xllist = None
     
     parse = argparse.ArgumentParser()
     parse.add_argument('-f','--file',help='file = IC Report file and path')
@@ -59,6 +60,11 @@ def main():
                 dbic.add_claim(report.date,report.report_items[repitem])
             dbic.close_missing_claims(report.date)
 
+    if program_args.excel is not None:
+        logging.info('Opening output file:' + program_args.excel)
+        dbic.export_excel(program_args.excel)
+        
+            
 class Report:
     def __init__(self,reportfile):
         self.filename = reportfile
@@ -223,7 +229,7 @@ class DB:
         claimlist = self.cursor.fetchall()
         for claim in claimlist:
             logging.debug(str(claim))
-            cmdate = datetime.strptime(claim[0],"%Y-%m-%d")
+            cmdate = datetime.strptime(claim[0],"%Y-%m-%d") 
             lrdate = datetime.strptime(claim[2],"%Y-%m-%d")
             intervenor = claim[3]
             status = claim[6]
@@ -241,7 +247,10 @@ class DB:
         agdt = re.search(r"On (\w+) (\d+)\w* Agenda",clstat)
         agdt2 = re.search(r"On (\d+)/(\d+)\w* Agenda",clstat)
         if re.search('Assigned',clstat):
-            dbstat = 'Assigned'
+            if re.search('Not',clstat):
+                dbstat = 'Pending'
+            else:
+                dbstat = 'Assigned'
         elif re.search('Pending',clstat):
             dbstat = 'Pending'
         elif re.search('Unassigned',clstat):
@@ -264,9 +273,31 @@ class DB:
             raise ValueError(clstat + " - is not an expected value")
         return (dbstat,cldate)
             
-    def export(xlpath):
+    def export_excel(self,xlpath):
         logging.info("Writing DB to " + xlpath)
-
+        wbk = Workbook()
+        sheet0 = wbk.active
+        sheet0.title = 'Claims'
+        sql = "SELECT * FROM claim"
+        logging.debug(sql)
+        self.cursor.execute(sql)
+        claimlist = self.cursor.fetchall()
+        headers = ['Claim Date','Intervenor','Proceeding','Amount','Status','Closed Date','Duration','First Report','Last Report']
+        dbpos = [0,3,4,5,6,7,8,1,2]
+        icol = 1
+        irow = 1
+        for head in headers:
+            sheet0.cell(row=irow,column=icol,value=head)
+            icol += 1
+        irow = 2
+        for claim in claimlist:
+            logging.debug(str(claim))
+            icol = 1
+            for pos in dbpos:
+                sheet0.cell(row=irow,column=icol,value=claim[pos])
+                icol += 1
+            irow += 1
+        wbk.save(xlpath)
 
 if __name__ == "__main__":
     main()
