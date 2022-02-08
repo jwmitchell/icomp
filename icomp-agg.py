@@ -244,7 +244,7 @@ class DB:
         ryear = rdate.year
         cldate = None
         dbstat = None
-        agdt = re.search(r"On (\w+) (\d+)\w* Agenda",clstat)
+        agdt = re.search(r"(\w+) (\d+)\w* Agenda",clstat)
         agdt2 = re.search(r"On (\d+)/(\d+)\w* Agenda",clstat)
         if re.search('Assigned',clstat):
             if re.search('Not',clstat):
